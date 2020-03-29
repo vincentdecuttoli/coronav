@@ -159,18 +159,6 @@ def update_map(map_day):
         )
     }
 
-def sumsq_error(parameters):
-    beta, gamma = parameters
-    
-    def SIR(t, y):
-        S = y[0]
-        I = y[1]
-        R = y[2]
-        return([-beta*S*I, beta*S*I-gamma*I, gamma*I])
-
-    solution = solve_ivp(SIR, [0, nb_steps-1], [total_population, 1, 0], t_eval=np.arange(0, nb_steps, 1))
-    
-    return(sum((solution.y[1]-infected_population)**2))
 
 if __name__ == '__main__':
     app.run_server(debug=True)
