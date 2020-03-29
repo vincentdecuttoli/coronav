@@ -1,38 +1,36 @@
-import os
-import numpy as np
-import yaml
 import datetime
+import os
+import yaml
 
+import numpy as np
 import pandas as pd
 
-import dash 
+import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
 
-#Répertoire de sauvegarde des fichiers bruts
-PROCESSED_DIR = '../data/processed/'
 
-#Table principale
-ALL_DATA_FILE = 'all_data.csv'
-
-ENV_FILE='../env.yaml'
+# Lecture du fichier d'environnement
+ENV_FILE = '../env.yaml'
 with open(ENV_FILE) as f:
     params = yaml.load(f, Loader=yaml.FullLoader)
 
-#initialisation des chemins vers les fichiers
+# Initialisation des chemins vers les fichiers
 ROOT_DIR = os.path.dirname(os.path.abspath(ENV_FILE))
-DATA_FILE= os.path.join(ROOT_DIR, params['directories']['processed'], params['files']['all_data'])
+DATA_FILE = os.path.join(ROOT_DIR,
+                         params['directories']['processed'],
+                         params['files']['all_data'])
 
-#Lecture du fihcier de données
+# Lecture du fichier de données
 epidemie_df = (pd.read_csv(DATA_FILE, parse_dates=['Last Update'])
-               .assign(day=lambda _df:_df['Last Update'].dt.date)
+               .assign(day=lambda _df: _df['Last Update'].dt.date)
                .drop_duplicates(subset=['Country/Region', 'Province/State', 'day'])
-               [lambda df: df['day'] <= datetime.date(2020,3,10)]
+               [lambda df: df['day'] <= datetime.date(2020, 3, 10)]
               )
 
+countries = [{'label': c, 'value': c} for c in sorted(epidemie_df['Country/Region'].unique())]
 
-countries=[{'label':c, 'value': c} for c in epidemie_df['Country/Region'].unique()]
 app = dash.Dash('Corona Virus Explorer')
 app.layout = html.Div([
     html.H1(['Corona Virus Explorer'], style={'textAlign': 'center'}),
@@ -49,15 +47,14 @@ app.layout = html.Div([
                     id='country2',
                     options=countries
                 )
-
             ]),
             html.Div([
                 dcc.RadioItems(
                     id='variable',
                     options=[
-                        {'label':'Confirmed', 'value': 'Confirmed'},
-                        {'label':'Deaths', 'value': 'Deaths'},
-                        {'label':'Recovered', 'value': 'Recovered'}
+                        {'label': 'Confirmed', 'value': 'Confirmed'},
+                        {'label': 'Deaths', 'value': 'Deaths'},
+                        {'label': 'Recovered', 'value': 'Recovered'}
                     ],
                     value='Confirmed',
                     labelStyle={'display': 'inline-block'}
@@ -65,18 +62,18 @@ app.layout = html.Div([
             ]),
             html.Div([
                 dcc.Graph(id='graph1')
-            ])
+            ]),   
         ]),
         dcc.Tab(label='Map', children=[
-            html.H6(['The map:']),
             dcc.Graph(id='map1'),
             dcc.Slider(
                 id='map_day',
                 min=0,
                 max=(epidemie_df['day'].max() - epidemie_df['day'].min()).days,
                 value=0,
+                #marks={i:str(date) for i, date in enumerate(epidemie_df['day'].unique())}
                 marks={i:str(i) for i, date in enumerate(epidemie_df['day'].unique())}
-            )     
+            )  
         ]),
     ]),
 ])
@@ -84,30 +81,33 @@ app.layout = html.Div([
 @app.callback(
     Output('graph1', 'figure'),
     [
-        Input('country','value'),
-        Input('country2','value'),
-        Input('variable','value'),
+        Input('country', 'value'),
+        Input('country2', 'value'),
+        Input('variable', 'value'),        
     ]
 )
 def update_graph(country, country2, variable):
     print(country)
-
     if country is None:
-        graph_df = epidemie_df.groupby('day').agg({variable:'sum'}).reset_index()
+        graph_df = epidemie_df.groupby('day').agg({variable: 'sum'}).reset_index()
     else:
-            graph_df=(epidemie_df[epidemie_df['Country/Region'] == country]
-              .groupby(['Country/Region', 'day'])
-              .agg({variable:'sum'})
-              .reset_index()
-             )
+        graph_df = (epidemie_df[epidemie_df['Country/Region'] == country]
+                    .groupby(['Country/Region', 'day'])
+                    .agg({variable: 'sum'})
+                    .reset_index()
+                   )
     if country2 is not None:
-        graph2_df=(epidemie_df[epidemie_df['Country/Region'] == country2]
-              .groupby(['Country/Region', 'day'])
-              .agg({variable:'sum'})
-              .reset_index()
-             )              
+        graph2_df = (epidemie_df[epidemie_df['Country/Region'] == country2]
+                     .groupby(['Country/Region', 'day'])
+                     .agg({variable: 'sum'})
+                     .reset_index()
+                    )
+
+        
+    #data : [dict(...graph_df...)] + ([dict(...graph2_df)] if country2 is not None else [])
+        
     return {
-        'data':[
+        'data': [
             dict(
                 x=graph_df['day'],
                 y=graph_df[variable],
@@ -120,42 +120,58 @@ def update_graph(country, country2, variable):
                 y=graph2_df[variable],
                 type='line',
                 name=country2
-            )
+            )            
         ] if country2 is not None else [])
     }
 
 @app.callback(
     Output('map1', 'figure'),
     [
-        Input('map_day','value'),
+        Input('map_day', 'value'),
     ]
 )
 def update_map(map_day):
-    day= epidemie_df['day'].unique()[map_day]
+    day = epidemie_df['day'].unique()[map_day]
     map_df = (epidemie_df[epidemie_df['day'] == day]
               .groupby(['Country/Region'])
-              .agg({'Confirmed':'sum', 'Latitude': 'mean', 'Longitude': 'mean'})
+              .agg({'Confirmed': 'sum', 'Latitude': 'mean', 'Longitude': 'mean'})
               .reset_index()
              )
-
+    print(map_day)
+    print(day)
+    print(map_df.head())
     return {
-        'data':[
+        'data': [
             dict(
                 type='scattergeo',
                 lon=map_df['Longitude'],
                 lat=map_df['Latitude'],
-                text=map_df.apply(lambda r: r['Country/Region'] + '(' + str(r['Confirmed']) + ')',axis=1),
+                text=map_df.apply(lambda r: r['Country/Region'] + ' (' + str(r['Confirmed']) + ')', axis=1),
                 mode='markers',
                 marker=dict(
-                    size=np.maximum(map_df['Confirmed']/ 1_000, 10)
+                    size=np.maximum(map_df['Confirmed'] / 1_000, 5)
                 )
             )
         ],
         'layout': dict(
-            geo=dict(showland=True)
+            title=str(day),
+            geo=dict(showland=True),
         )
-
     }
+
+def sumsq_error(parameters):
+    beta, gamma = parameters
+    
+    def SIR(t, y):
+        S = y[0]
+        I = y[1]
+        R = y[2]
+        return([-beta*S*I, beta*S*I-gamma*I, gamma*I])
+
+    solution = solve_ivp(SIR, [0, nb_steps-1], [total_population, 1, 0], t_eval=np.arange(0, nb_steps, 1))
+    
+    return(sum((solution.y[1]-infected_population)**2))
 
 if __name__ == '__main__':
     app.run_server(debug=True)
+
