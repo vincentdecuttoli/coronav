@@ -26,10 +26,20 @@ DATA_FILE = os.path.join(ROOT_DIR,
 epidemie_df = (pd.read_csv(DATA_FILE, parse_dates=['Last Update'])
                .assign(day=lambda _df: _df['Last Update'].dt.date)
                .drop_duplicates(subset=['Country/Region', 'Province/State', 'day'])
-               [lambda df: df['day'] <= datetime.date(2020, 3, 10)]
+               [lambda df: df['day'] <= datetime.date(2020, 3, 21)]
               )
 
 countries = [{'label': c, 'value': c} for c in sorted(epidemie_df['Country/Region'].unique())]
+betagamma = [{'beta' : 0.001, 'gamma' : 0.1}]
+
+korea_df = (epidemie_df[epidemie_df['Country/Region']=='South Korea']
+             .groupby(['Country/Region','day'])
+             .agg({'Confirmed':'sum', 'Deaths':'sum', 'Recovered':'sum'})
+             .reset_index()
+            )
+
+korea_df['infected']=korea_df['Confirmed'].diff()
+
 
 app = dash.Dash('Corona Virus Explorer')
 app.layout = html.Div([
@@ -75,6 +85,13 @@ app.layout = html.Div([
                 marks={i:str(i) for i, date in enumerate(epidemie_df['day'].unique())}
             )  
         ]),
+        dcc.Tab(label='Time', children = [
+            html.Div([
+                dcc.Dropdown(
+                id = "parameters",
+                options=betagamma)
+            ])
+        ])
     ]),
 ])
 
@@ -158,7 +175,34 @@ def update_map(map_day):
             geo=dict(showland=True),
         )
     }
+##ne marche pas
+@app.callback(
+    Output('graph1', 'figure'),
+    [
+        Input('parameters', 'beta'),
+        Input('parameters', 'gamma'),
+        Input('Population', 51_470_000),
+    ]
+)
 
+def sumsq_error(parameters):
+    beta, gamma = parameters
+    print(parameters)
+    print(beta)
+    print(gamma)
+    
+def SIR(t, y):
+    S = y[0]
+    I = y[1]
+    R = y[2]
+    print(S)
+    print(I)
+    print(R)
+    return([-beta*S*I, beta*S*I-gamma*I, gamma*I])
+
+    solution_korea = solve_ivp(SIR, [0, 40], [Population, 1, 0], t_eval=np.arange(0, 41, 1))
+
+    return(sum((solution.y[1]-korea_df.loc[2:]['infected'])**2))
 
 if __name__ == '__main__':
     app.run_server(debug=True)
